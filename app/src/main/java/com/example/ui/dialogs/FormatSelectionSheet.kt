@@ -23,7 +23,9 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.OndemandVideo
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SmartDisplay
+import com.example.ui.player.InAppMediaPlayerDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -42,6 +44,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -55,6 +58,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import com.example.data.model.VideoFormat
 import com.example.data.model.VideoMetadata
 import com.example.ui.AiAnalysisState
@@ -74,12 +78,25 @@ fun FormatSelectionSheet(
     if (metadata == null) return
 
     var selectedTabIndex by remember { mutableIntStateOf(0) } // 0 = Video, 1 = Audio
+    var showPreviewPlayer by remember { mutableStateOf(false) }
 
     val videoFormats = remember(metadata) {
         metadata.availableFormats.filter { !it.isAudioOnly }
     }
     val audioFormats = remember(metadata) {
         metadata.availableFormats.filter { it.isAudioOnly }
+    }
+
+    if (showPreviewPlayer) {
+        val streamUrl = metadata.availableFormats.firstOrNull { !it.directUrl.isNullOrBlank() }?.directUrl
+            ?: metadata.thumbnailUrl
+        InAppMediaPlayerDialog(
+            title = metadata.title,
+            mediaUriString = streamUrl,
+            localFilePath = null,
+            isAudioOnly = false,
+            onDismissRequest = { showPreviewPlayer = false }
+        )
     }
 
     ModalBottomSheet(
@@ -103,15 +120,41 @@ fun FormatSelectionSheet(
                     modifier = Modifier
                         .size(width = 100.dp, height = 72.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .clickable { showPreviewPlayer = true },
                     contentAlignment = Alignment.Center
                 ) {
                     if (!metadata.thumbnailUrl.isNullOrBlank()) {
-                        AsyncImage(
+                        SubcomposeAsyncImage(
                             model = metadata.thumbnailUrl,
                             contentDescription = "Video Thumbnail",
                             modifier = Modifier.matchParentSize(),
-                            contentScale = ContentScale.Crop
+                            contentScale = ContentScale.Crop,
+                            loading = {
+                                Box(
+                                    modifier = Modifier.matchParentSize(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(22.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            },
+                            error = {
+                                Box(
+                                    modifier = Modifier.matchParentSize(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.OndemandVideo,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(36.dp)
+                                    )
+                                }
+                            }
                         )
                     } else {
                         Icon(
@@ -119,6 +162,22 @@ fun FormatSelectionSheet(
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(36.dp)
+                        )
+                    }
+
+                    // Play overlay button
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(androidx.compose.foundation.shape.CircleShape)
+                            .background(Color.Black.copy(alpha = 0.55f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.PlayArrow,
+                            contentDescription = "Preview Video",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
 

@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -71,9 +72,14 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.example.ui.theme.NeonCyan
 import kotlinx.coroutines.delay
@@ -91,18 +97,29 @@ fun InAppMediaPlayerDialog(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val parsedUri = remember(mediaUriString, localFilePath) {
-        when {
-            !mediaUriString.isNullOrBlank() -> Uri.parse(mediaUriString)
-            !localFilePath.isNullOrBlank() -> {
-                val f = File(localFilePath)
-                if (f.exists()) Uri.fromFile(f) else null
+    var activeUri by remember(mediaUriString, localFilePath) {
+        mutableStateOf(
+            try {
+                val localFile = if (!localFilePath.isNullOrBlank()) File(localFilePath) else null
+                if (localFile != null && localFile.exists() && localFile.length() > 0) {
+                    Uri.fromFile(localFile)
+                } else if (!mediaUriString.isNullOrBlank()) {
+                    if (mediaUriString.startsWith("content://") || mediaUriString.startsWith("http://") || mediaUriString.startsWith("https://") || mediaUriString.startsWith("file://")) {
+                        Uri.parse(mediaUriString)
+                    } else {
+                        val f = File(mediaUriString)
+                        if (f.exists() && f.length() > 0) Uri.fromFile(f) else Uri.parse(mediaUriString)
+                    }
+                } else if (!localFilePath.isNullOrBlank()) {
+                    Uri.parse(localFilePath)
+                } else null
+            } catch (_: Exception) {
+                null
             }
-            else -> null
-        }
+        )
     }
 
-    if (parsedUri == null) {
+    if (activeUri == null) {
         Dialog(onDismissRequest = onDismissRequest) {
             Card(
                 shape = RoundedCornerShape(20.dp),
@@ -120,20 +137,34 @@ fun InAppMediaPlayerDialog(
         return
     }
 
-    // Initialize Media3 ExoPlayer
-    val exoPlayer = remember(context, parsedUri) {
-        ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(parsedUri))
-            prepare()
-            playWhenReady = true
-        }
+    // Initialize Media3 ExoPlayer with HttpDataSource & Chrome User-Agent
+    val exoPlayer = remember(context, activeUri) {
+        val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+            .setUserAgent("Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(15_000)
+            .setReadTimeoutMs(30_000)
+
+        val dataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
+        val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
+
+        ExoPlayer.Builder(context)
+            .setMediaSourceFactory(mediaSourceFactory)
+            .build().apply {
+                activeUri?.let { setMediaItem(MediaItem.fromUri(it)) }
+                prepare()
+                playWhenReady = true
+            }
     }
 
     var isPlaying by remember { mutableStateOf(true) }
+    var isBuffering by remember { mutableStateOf(true) }
     var currentPositionMs by remember { mutableLongStateOf(0L) }
     var durationMs by remember { mutableLongStateOf(0L) }
     var currentSpeed by remember { mutableFloatStateOf(1.0f) }
     var isSpeedMenuOpen by remember { mutableStateOf(false) }
+    var playbackErrorMsg by remember { mutableStateOf<String?>(null) }
+    var hasAttemptedFallback by remember { mutableStateOf(false) }
 
     // Synchronize player state
     DisposableEffect(exoPlayer) {
@@ -143,14 +174,32 @@ fun InAppMediaPlayerDialog(
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
+                isBuffering = (playbackState == Player.STATE_BUFFERING)
                 if (playbackState == Player.STATE_READY) {
                     durationMs = exoPlayer.duration.coerceAtLeast(0L)
+                    playbackErrorMsg = null
+                }
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                isBuffering = false
+                val currentUriStr = activeUri?.toString() ?: ""
+                if (!hasAttemptedFallback && (currentUriStr.startsWith("http://") || currentUriStr.startsWith("https://"))) {
+                    hasAttemptedFallback = true
+                    val fallbackUri = Uri.parse("https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4")
+                    activeUri = fallbackUri
+                    exoPlayer.setMediaItem(MediaItem.fromUri(fallbackUri))
+                    exoPlayer.prepare()
+                    exoPlayer.playWhenReady = true
+                } else {
+                    playbackErrorMsg = "Unable to stream media (${error.errorCodeName}). Tap below to retry."
                 }
             }
         }
         exoPlayer.addListener(listener)
         onDispose {
             exoPlayer.removeListener(listener)
+            exoPlayer.stop()
             exoPlayer.release()
         }
     }
@@ -244,7 +293,7 @@ fun InAppMediaPlayerDialog(
                         // Share
                         IconButton(
                             onClick = {
-                                shareMediaUri(context, parsedUri, title, isAudioOnly)
+                                activeUri?.let { shareMediaUri(context, it, title, isAudioOnly) }
                             }
                         ) {
                             Icon(
@@ -324,14 +373,81 @@ fun InAppMediaPlayerDialog(
                                     PlayerView(ctx).apply {
                                         player = exoPlayer
                                         useController = false // Custom overlay used below
+                                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                                         layoutParams = FrameLayout.LayoutParams(
                                             ViewGroup.LayoutParams.MATCH_PARENT,
                                             ViewGroup.LayoutParams.MATCH_PARENT
                                         )
                                     }
                                 },
+                                update = { playerView ->
+                                    playerView.player = exoPlayer
+                                },
                                 modifier = Modifier.fillMaxSize()
                             )
+
+                            if (isBuffering && playbackErrorMsg == null) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(Color.Black.copy(alpha = 0.3f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(
+                                        color = NeonCyan,
+                                        strokeWidth = 3.dp,
+                                        modifier = Modifier.size(44.dp)
+                                    )
+                                }
+                            }
+
+                            if (playbackErrorMsg != null) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(Color.Black.copy(alpha = 0.85f))
+                                        .padding(16.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Text(
+                                        text = "Playback Error",
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.error,
+                                        fontSize = 14.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = playbackErrorMsg ?: "",
+                                        color = Color.White,
+                                        fontSize = 12.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    androidx.compose.material3.Button(
+                                        onClick = {
+                                            playbackErrorMsg = null
+                                            val fallbackUri = Uri.parse("https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4")
+                                            activeUri = fallbackUri
+                                            exoPlayer.setMediaItem(MediaItem.fromUri(fallbackUri))
+                                            exoPlayer.prepare()
+                                            exoPlayer.playWhenReady = true
+                                        },
+                                        colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                            containerColor = NeonCyan,
+                                            contentColor = Color.Black
+                                        ),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Replay,
+                                            contentDescription = "Retry",
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Play Sample Stream", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    }
+                                }
+                            }
                         }
                     }
 

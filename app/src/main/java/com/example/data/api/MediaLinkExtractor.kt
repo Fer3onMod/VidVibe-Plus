@@ -68,6 +68,8 @@ class MediaLinkExtractor {
         var apiFilename: String? = null
         var pickerItems: List<CobaltPickerItem>? = null
 
+        var directThumbnail: String? = null
+
         try {
             val request = CobaltRequest(
                 url = cleanUrl,
@@ -100,6 +102,7 @@ class MediaLinkExtractor {
                 val directPin = extractPinterestDirect(cleanUrl)
                 if (directPin != null) {
                     apiDirectUrl = directPin.videoUrl
+                    directThumbnail = directPin.thumbnailUrl
                     if (apiFilename == null) {
                         apiFilename = directPin.title + ".mp4"
                     }
@@ -110,6 +113,7 @@ class MediaLinkExtractor {
                 val directPin = extractPinterestDirect(cleanUrl)
                 if (directPin != null) {
                     apiDirectUrl = directPin.videoUrl
+                    directThumbnail = directPin.thumbnailUrl
                     if (apiFilename == null) {
                         apiFilename = directPin.title + ".mp4"
                     }
@@ -125,7 +129,7 @@ class MediaLinkExtractor {
             return@withContext Result.failure(Exception("Could not extract media links. Please try again."))
         }
 
-        val extractedInfo = inferMediaDetails(cleanUrl, platform, apiFilename)
+        val extractedInfo = inferMediaDetails(cleanUrl, platform, apiFilename, directThumbnail)
 
         if (!pickerItems.isNullOrEmpty()) {
             val metadataList = pickerItems.mapIndexed { index, item ->
@@ -272,7 +276,8 @@ class MediaLinkExtractor {
     private fun inferMediaDetails(
         url: String,
         platform: PlatformType,
-        apiFilename: String?
+        apiFilename: String?,
+        extractedThumbnail: String? = null
     ): InferredDetails {
         if (!apiFilename.isNullOrBlank()) {
             val cleanTitle = apiFilename.substringBeforeLast(".")
@@ -280,7 +285,7 @@ class MediaLinkExtractor {
                 title = cleanTitle,
                 author = platform.displayName,
                 durationSeconds = 184L,
-                thumbnailUrl = null,
+                thumbnailUrl = extractedThumbnail ?: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&auto=format&fit=crop",
                 estimatedBaseBytes = 38_000_000L
             )
         }
@@ -288,7 +293,7 @@ class MediaLinkExtractor {
         return when (platform) {
             PlatformType.YOUTUBE, PlatformType.YOUTUBE_SHORTS -> {
                 val videoId = extractYouTubeId(url)
-                val thumb = if (videoId != null) "https://img.youtube.com/vi/$videoId/hqdefault.jpg" else null
+                val thumb = if (videoId != null) "https://img.youtube.com/vi/$videoId/hqdefault.jpg" else "https://images.unsplash.com/photo-1611162616305-c69b3fa7fbe0?w=800&auto=format&fit=crop"
                 InferredDetails(
                     title = if (platform == PlatformType.YOUTUBE_SHORTS) "Trending YouTube Short" else "Featured YouTube Video",
                     author = "@CreatorChannel",
@@ -302,7 +307,7 @@ class MediaLinkExtractor {
                     title = "Instagram Reel & Media",
                     author = "@instagram_creator",
                     durationSeconds = 60L,
-                    thumbnailUrl = null,
+                    thumbnailUrl = "https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=800&auto=format&fit=crop",
                     estimatedBaseBytes = 22_000_000L
                 )
             }
@@ -311,7 +316,7 @@ class MediaLinkExtractor {
                     title = "Viral TikTok Video Clip",
                     author = "@tiktok_creator",
                     durationSeconds = 30L,
-                    thumbnailUrl = null,
+                    thumbnailUrl = "https://images.unsplash.com/photo-1598899134739-24c46f58b8c0?w=800&auto=format&fit=crop",
                     estimatedBaseBytes = 16_000_000L
                 )
             }
@@ -320,7 +325,7 @@ class MediaLinkExtractor {
                     title = "Twitter / X Video Post",
                     author = "@x_user",
                     durationSeconds = 72L,
-                    thumbnailUrl = null,
+                    thumbnailUrl = "https://images.unsplash.com/photo-1611605697805-88a46f077e2c?w=800&auto=format&fit=crop",
                     estimatedBaseBytes = 24_000_000L
                 )
             }
@@ -329,7 +334,7 @@ class MediaLinkExtractor {
                     title = "Facebook Video Story",
                     author = "Facebook Watch",
                     durationSeconds = 128L,
-                    thumbnailUrl = null,
+                    thumbnailUrl = "https://images.unsplash.com/photo-1563986768609-322da13575f3?w=800&auto=format&fit=crop",
                     estimatedBaseBytes = 32_000_000L
                 )
             }
@@ -338,7 +343,7 @@ class MediaLinkExtractor {
                     title = "WhatsApp Status Video",
                     author = "WhatsApp Contact",
                     durationSeconds = 30L,
-                    thumbnailUrl = null,
+                    thumbnailUrl = "https://images.unsplash.com/photo-1614680376593-902f749f7cfc?w=800&auto=format&fit=crop",
                     estimatedBaseBytes = 14_000_000L
                 )
             }
@@ -347,7 +352,7 @@ class MediaLinkExtractor {
                     title = "Telegram Channel Media",
                     author = "Telegram Public Channel",
                     durationSeconds = 195L,
-                    thumbnailUrl = null,
+                    thumbnailUrl = "https://images.unsplash.com/photo-1579202673506-ca3ce28943ef?w=800&auto=format&fit=crop",
                     estimatedBaseBytes = 45_000_000L
                 )
             }
@@ -356,7 +361,7 @@ class MediaLinkExtractor {
                     title = "Pinterest Video Pin",
                     author = "@PinterestPin",
                     durationSeconds = 45L,
-                    thumbnailUrl = null,
+                    thumbnailUrl = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&auto=format&fit=crop",
                     estimatedBaseBytes = 18_000_000L
                 )
             }
@@ -372,7 +377,7 @@ class MediaLinkExtractor {
                     title = fallbackTitle,
                     author = "Direct Web Source",
                     durationSeconds = 140L,
-                    thumbnailUrl = null,
+                    thumbnailUrl = "https://images.unsplash.com/photo-1536240478700-b869070f9279?w=800&auto=format&fit=crop",
                     estimatedBaseBytes = 28_000_000L
                 )
             }

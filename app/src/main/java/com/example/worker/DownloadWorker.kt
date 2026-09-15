@@ -97,43 +97,31 @@ class DownloadWorker(
             val contentLength = body.contentLength().let { if (it > 0) it else 35_000_000L }
             inputStream = body.byteStream()
 
-            // Setup output destination via MediaStore or public file storage
+            // Always save to a reliable app-accessible local file path first for instant, permission-free playback
+            val folderType = if (isAudio) Environment.DIRECTORY_MUSIC else Environment.DIRECTORY_MOVIES
+            val appFolder = File(context.getExternalFilesDir(folderType), "VidVibe").apply { mkdirs() }
+            val targetFile = File(appFolder, fileName)
+            savedFile = targetFile
+            outputStream = FileOutputStream(targetFile)
+
+            // Setup MediaStore entry for Android 10+ so gallery apps register it
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val collection = if (isAudio) {
-                    MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-                } else {
-                    MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-                }
-
-                val mimeType = if (isAudio) "audio/mpeg" else "video/mp4"
-                val relativePath = if (isAudio) {
-                    "${Environment.DIRECTORY_MUSIC}/VideoDownloader"
-                } else {
-                    "${Environment.DIRECTORY_MOVIES}/VideoDownloader"
-                }
-
-                val contentValues = ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                    put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
-                    put(MediaStore.MediaColumns.IS_PENDING, 1)
-                }
-
-                val uri = context.contentResolver.insert(collection, contentValues)
-                    ?: throw IllegalStateException("Failed to create MediaStore entry")
-                mediaStoreUri = uri
-                outputStream = context.contentResolver.openOutputStream(uri)
-            } else {
-                @Suppress("DEPRECATION")
-                val publicDir = if (isAudio) {
-                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC)
-                } else {
-                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
-                }
-                val appFolder = File(publicDir, "VideoDownloader").apply { mkdirs() }
-                val target = File(appFolder, fileName)
-                savedFile = target
-                outputStream = FileOutputStream(target)
+                try {
+                    val collection = if (isAudio) {
+                        MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                    } else {
+                        MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                    }
+                    val mimeType = if (isAudio) "audio/mpeg" else "video/mp4"
+                    val relativePath = if (isAudio) "${Environment.DIRECTORY_MUSIC}/VidVibe" else "${Environment.DIRECTORY_MOVIES}/VidVibe"
+                    val contentValues = ContentValues().apply {
+                        put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                        put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                        put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
+                        put(MediaStore.MediaColumns.IS_PENDING, 1)
+                    }
+                    mediaStoreUri = context.contentResolver.insert(collection, contentValues)
+                } catch (_: Exception) {}
             }
 
             val buffer = ByteArray(16 * 1024)
@@ -190,12 +178,19 @@ class DownloadWorker(
 
             outputStream?.flush()
 
-            // Finalize MediaStore entry by clearing IS_PENDING
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && mediaStoreUri != null) {
-                val finalizeValues = ContentValues().apply {
-                    put(MediaStore.MediaColumns.IS_PENDING, 0)
-                }
-                context.contentResolver.update(mediaStoreUri, finalizeValues, null, null)
+            // Copy file content to MediaStore if created
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && mediaStoreUri != null && savedFile != null && savedFile.exists()) {
+                try {
+                    context.contentResolver.openOutputStream(mediaStoreUri)?.use { msOut ->
+                        savedFile.inputStream().use { fileIn ->
+                            fileIn.copyTo(msOut)
+                        }
+                    }
+                    val finalizeValues = ContentValues().apply {
+                        put(MediaStore.MediaColumns.IS_PENDING, 0)
+                    }
+                    context.contentResolver.update(mediaStoreUri, finalizeValues, null, null)
+                } catch (_: Exception) {}
             }
 
             val finalPath = savedFile?.absolutePath ?: mediaStoreUri?.toString() ?: ""

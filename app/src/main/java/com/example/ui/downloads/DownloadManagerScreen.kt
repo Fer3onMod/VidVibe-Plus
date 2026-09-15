@@ -44,6 +44,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import com.example.R
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -79,6 +80,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import com.example.data.model.DownloadItem
 import com.example.data.model.DownloadStatus
 import com.example.ui.components.AnimatedCompletionCheckmark
@@ -404,11 +406,36 @@ fun ActiveDownloadCard(
                     contentAlignment = Alignment.Center
                 ) {
                     if (!item.thumbnailUrl.isNullOrBlank()) {
-                        AsyncImage(
+                        SubcomposeAsyncImage(
                             model = item.thumbnailUrl,
                             contentDescription = null,
                             modifier = Modifier.matchParentSize(),
-                            contentScale = ContentScale.Crop
+                            contentScale = ContentScale.Crop,
+                            loading = {
+                                Box(
+                                    modifier = Modifier.matchParentSize(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            },
+                            error = {
+                                Box(
+                                    modifier = Modifier.matchParentSize(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = if (item.isAudioOnly) Icons.Filled.Headphones else Icons.Filled.Movie,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                            }
                         )
                     } else {
                         Icon(
@@ -578,6 +605,16 @@ fun CompletedDownloadCard(
                 .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // Determine best available image model for thumbnail
+            val imageModel: Any? = remember(item.thumbnailUrl, item.localFilePath, item.mediaStoreUri) {
+                when {
+                    !item.thumbnailUrl.isNullOrBlank() -> item.thumbnailUrl
+                    !item.localFilePath.isNullOrBlank() && java.io.File(item.localFilePath).exists() -> java.io.File(item.localFilePath)
+                    !item.mediaStoreUri.isNullOrBlank() -> Uri.parse(item.mediaStoreUri)
+                    else -> null
+                }
+            }
+
             // Thumbnail with play button overlay
             Box(
                 modifier = Modifier
@@ -587,12 +624,37 @@ fun CompletedDownloadCard(
                     .clickable { onPlayClick() },
                 contentAlignment = Alignment.Center
             ) {
-                if (!item.thumbnailUrl.isNullOrBlank()) {
-                    AsyncImage(
-                        model = item.thumbnailUrl,
+                if (imageModel != null) {
+                    SubcomposeAsyncImage(
+                        model = imageModel,
                         contentDescription = null,
                         modifier = Modifier.matchParentSize(),
-                        contentScale = ContentScale.Crop
+                        contentScale = ContentScale.Crop,
+                        loading = {
+                            Box(
+                                modifier = Modifier.matchParentSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        },
+                        error = {
+                            Box(
+                                modifier = Modifier.matchParentSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = if (item.isAudioOnly) Icons.Filled.Audiotrack else Icons.Filled.Movie,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
                     )
                     Box(
                         modifier = Modifier
@@ -601,10 +663,10 @@ fun CompletedDownloadCard(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Filled.PlayArrow,
+                            imageVector = if (item.isAudioOnly) Icons.Filled.Headphones else Icons.Filled.PlayArrow,
                             contentDescription = "Play",
                             tint = Color.White,
-                            modifier = Modifier.size(26.dp)
+                            modifier = Modifier.size(24.dp)
                         )
                     }
                 } else {

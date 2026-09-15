@@ -52,6 +52,31 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // Configure Coil ImageLoader with custom OkHttpClient & VideoFrameDecoder
+        try {
+            val okHttpClient = okhttp3.OkHttpClient.Builder()
+                .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+                .addInterceptor { chain ->
+                    val req = chain.request().newBuilder()
+                        .header("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
+                        .header("Accept", "image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8")
+                        .build()
+                    chain.proceed(req)
+                }
+                .build()
+
+            val imageLoader = coil.ImageLoader.Builder(this)
+                .okHttpClient(okHttpClient)
+                .components {
+                    add(coil.decode.VideoFrameDecoder.Factory())
+                }
+                .crossfade(true)
+                .build()
+            coil.Coil.setImageLoader(imageLoader)
+        } catch (_: Exception) {}
+
         enableEdgeToEdge()
         handleSharedIntent(intent)
 

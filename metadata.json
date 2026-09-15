@@ -1,0 +1,6 @@
+{
+  "name": "VidVibe",
+  "description": "Universal Video & Media Downloader app with no-login URL parsing, WhatsApp status saver, batch downloader, and built-in media player.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,37 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="200dp"
+    android:height="200dp"
+    android:viewportWidth="200"
+    android:viewportHeight="200">
+
+    <!-- Glowing Futuristic Media Play Polygon -->
+    <path
+        android:pathData="M52,38 L148,94 C154,97.5 154,106.5 148,110 L52,166 C45.5,170 37,165 37,157 L37,47 C37,39 45.5,34 52,38 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:angle="135"
+                android:endColor="#6366F1"
+                android:startColor="#00F2FE"
+                android:type="linear" />
+        </aapt:attr>
+    </path>
+
+    <!-- Sleek High-Tech Central Download Arrow -->
+    <path
+        android:pathData="M92,68 L116,68 L116,104 L132,104 L104,136 L76,104 L92,104 Z"
+        android:fillColor="#FFFFFF" />
+
+    <!-- Modern Speed Trailing Accent Lines -->
+    <path
+        android:pathData="M78,148 L130,148"
+        android:strokeColor="#00F2FE"
+        android:strokeWidth="6"
+        android:strokeLineCap="round" />
+
+    <path
+        android:pathData="M90,160 L118,160"
+        android:strokeColor="#A855F7"
+        android:strokeWidth="5"
+        android:strokeLineCap="round" />
+</vector>
